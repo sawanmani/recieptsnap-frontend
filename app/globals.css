@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-pastel: #E8DFF5;
+  --accent-mint: #D8F3DC;
+  --accent-peach: #FFE5D9;
+  --soft-sky: #DCEEFB;
+  --accent-coral: #FFADAD;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}

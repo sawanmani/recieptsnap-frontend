@@ -3,7 +3,7 @@
 import { useState, useRef, ChangeEvent } from 'react';
 import { Camera, Upload, Receipt, PieChart, Settings, X, CheckCircle } from 'lucide-react';
 import UsageBadge from '@/components/UsageBadge';
-import { useSession } from 'next-auth/react';
+import { useSession, Session } from 'next-auth/react';
 import { api } from '@/lib/api';
 
 interface ReceiptItem {
@@ -36,11 +36,15 @@ export default function Home() {
 
   // Fetch receipt history
   const fetchReceiptHistory = async (page: number) => {
-    if (!session || !session.accessToken) return;
+    if (!session) return;
+    
+    // Type guard to ensure session has accessToken
+    const sessionWithToken = session as Session & { accessToken?: string };
+    if (!sessionWithToken.accessToken) return;
     
     setLoadingHistory(true);
     try {
-      const response = await api.get(`/api/receipts?page=${page}&limit=${itemsPerPage}`, session.accessToken);
+      const response = await api.get(`/api/receipts?page=${page}&limit=${itemsPerPage}`, sessionWithToken.accessToken);
       
       if (response.ok) {
         const data = await response.json();
@@ -90,6 +94,9 @@ export default function Home() {
       return;
     }
 
+    // Type guard to ensure session has accessToken
+    const sessionWithToken = session as Session & { accessToken?: string };
+    
     setIsProcessing(true);
     setParsedReceipt(null);
 
@@ -106,7 +113,7 @@ export default function Home() {
         body: formData,
         headers: {
           // Don't set Content-Type header as it will be set automatically with boundary
-          'Authorization': `Bearer ${session.accessToken}`,
+          'Authorization': `Bearer ${sessionWithToken.accessToken}`,
         },
       });
 

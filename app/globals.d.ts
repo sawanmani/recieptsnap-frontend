@@ -1,4 +1,4 @@
-export * from '../index';
+// app/globals.d.ts
 import { DefaultSession } from 'next-auth';
 
 declare module 'next-auth' {
@@ -22,3 +22,6 @@ declare module 'next-auth' {
     googleId?: string;
   }
 }
+
+// This is a workaround to make the module declaration work properly in Next.js
+export {};

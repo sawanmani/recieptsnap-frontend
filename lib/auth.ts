@@ -17,8 +17,9 @@ export const authOptions = {
       return token;
     },
     async session({ session, token }: any) {
-      // Add Google ID to session
+      // Add Google ID and access token to session
       session.user.googleId = token.googleId;
+      session.accessToken = token.accessToken;
       return session;
     },
   },

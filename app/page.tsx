@@ -36,7 +36,7 @@ export default function Home() {
 
   // Fetch receipt history
   const fetchReceiptHistory = async (page: number) => {
-    if (!session) return;
+    if (!session || !session.accessToken) return;
     
     setLoadingHistory(true);
     try {

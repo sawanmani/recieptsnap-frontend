@@ -10,7 +10,5 @@ export const getAccessToken = (session: Session | null): string | undefined => {
     return undefined;
   }
 
-  // Type assertion to access the accessToken property
-  // This is safe because our NextAuth configuration adds it to the session
-  return (session as any)?.accessToken;
+  return session.accessToken;
 };

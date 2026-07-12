@@ -1,4 +1,3 @@
-export * from '../index';
 import { DefaultSession } from 'next-auth';
 
 declare module 'next-auth' {

@@ -11,7 +11,6 @@ declare module 'next-auth' {
       image?: string | null;
       googleId?: string;
     };
-    accessToken?: string;
   }
 
   interface Profile {

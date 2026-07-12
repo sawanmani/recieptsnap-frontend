@@ -4,6 +4,12 @@ import { getSession } from 'next-auth/react';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
 
 export const api = {
+  /**
+   * Makes a GET request to the backend API
+   * @param url - The API endpoint to call
+   * @param token - Optional authentication token
+   * @returns The fetch Response object
+   */
   async get(url: string, token?: string) {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -21,6 +27,13 @@ export const api = {
     return response;
   },
 
+  /**
+   * Makes a POST request to the backend API
+   * @param url - The API endpoint to call
+   * @param data - Optional request body data
+   * @param token - Optional authentication token
+   * @returns The fetch Response object
+   */
   async post(url: string, data?: any, token?: string) {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -39,6 +52,13 @@ export const api = {
     return response;
   },
 
+  /**
+   * Makes a PUT request to the backend API
+   * @param url - The API endpoint to call
+   * @param data - Request body data
+   * @param token - Optional authentication token
+   * @returns The fetch Response object
+   */
   async put(url: string, data: any, token?: string) {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -57,6 +77,12 @@ export const api = {
     return response;
   },
 
+  /**
+   * Makes a DELETE request to the backend API
+   * @param url - The API endpoint to call
+   * @param token - Optional authentication token
+   * @returns The fetch Response object
+   */
   async delete(url: string, token?: string) {
     const headers: Record<string, string> = {};
 

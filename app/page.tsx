@@ -3,8 +3,9 @@
 import { useState, useRef, ChangeEvent } from 'react';
 import { Camera, Upload, Receipt, PieChart, Settings, X, CheckCircle } from 'lucide-react';
 import UsageBadge from '@/components/UsageBadge';
-import { useSession, Session } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 import { api } from '@/lib/api';
+import { getAccessToken } from '@/lib/sessionUtils';
 
 interface ReceiptItem {
   id: string;
@@ -36,15 +37,12 @@ export default function Home() {
 
   // Fetch receipt history
   const fetchReceiptHistory = async (page: number) => {
-    if (!session) return;
-    
-    // Type guard to ensure session has accessToken
-    const sessionWithToken = session as Session & { accessToken?: string };
-    if (!sessionWithToken.accessToken) return;
+    const accessToken = getAccessToken(session);
+    if (!accessToken) return;
     
     setLoadingHistory(true);
     try {
-      const response = await api.get(`/api/receipts?page=${page}&limit=${itemsPerPage}`, sessionWithToken.accessToken);
+      const response = await api.get(`/api/receipts?page=${page}&limit=${itemsPerPage}`, accessToken);
       
       if (response.ok) {
         const data = await response.json();
@@ -94,9 +92,13 @@ export default function Home() {
       return;
     }
 
-    // Type guard to ensure session has accessToken
-    const sessionWithToken = session as Session & { accessToken?: string };
-    
+    const accessToken = getAccessToken(session);
+    if (!accessToken) {
+      alert('Authentication token not available. Please sign in again.');
+      window.location.href = '/login';
+      return;
+    }
+
     setIsProcessing(true);
     setParsedReceipt(null);
 
@@ -113,7 +115,7 @@ export default function Home() {
         body: formData,
         headers: {
           // Don't set Content-Type header as it will be set automatically with boundary
-          'Authorization': `Bearer ${sessionWithToken.accessToken}`,
+          'Authorization': `Bearer ${accessToken}`,
         },
       });
 

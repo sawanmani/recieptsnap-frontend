@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, ChangeEvent, useEffect } from 'react';
-import { Camera, Upload, Receipt, PieChart, Settings, X, CheckCircle, CircleCheck } from 'lucide-react';
+import { Camera, Upload, Receipt, PieChart, Settings, X, CheckCircle } from 'lucide-react';
 import UsageBadge from '@/components/UsageBadge';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -450,10 +450,7 @@ export default function Dashboard() {
                       <td className="py-3 px-4">{receipt.merchantName || 'Unknown'}</td>
                       <td className="py-3 px-4 text-red-500">{receipt.currency} {receipt.totalAmount?.toFixed(2)}</td>
                       <td className="py-3 px-4">
-                        <div className="flex items-center">
-                          <CircleCheck className="text-green-500 mr-2" size={16} />
-                          <span>Processed</span>
-                        </div>
+                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded">Processed</span>
                       </td>
                     </tr>
                   ))}

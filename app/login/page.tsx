@@ -13,7 +13,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       await signIn('google', { 
-        callbackUrl: `${window.location.origin}/dashboard` 
+        callbackUrl: '/dashboard' 
       });
     } catch (error) {
       console.error('Error signing in with Google:', error);

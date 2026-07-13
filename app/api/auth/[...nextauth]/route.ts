@@ -10,9 +10,30 @@ const handler = NextAuth({
   ],
   callbacks: {
     async jwt({ token, account, profile }: any) {
-      if (account) {
-        token.accessToken = account.access_token;
-        token.googleId = profile?.sub; // Google ID
+      if (account && profile) {
+        // New Google sign-in: sync with backend to get OUR JWT, not Google's token
+        try {
+          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+          const res = await fetch(`${backendUrl}/api/auth/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              googleId: profile.sub,
+              email: profile.email,
+              name: profile.name,
+              avatarUrl: profile.picture,
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            token.accessToken = data.token; // backend JWT, replaces Google's token
+            token.googleId = profile.sub;
+          } else {
+            console.error('Backend auth sync failed:', res.status);
+          }
+        } catch (err) {
+          console.error('Backend auth sync error:', err);
+        }
       }
       return token;
     },

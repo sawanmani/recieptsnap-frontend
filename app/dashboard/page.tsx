@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useRef, ChangeEvent, useEffect } from 'react';
-import { Camera, Upload, Receipt, PieChart, Settings, X, CheckCircle } from 'lucide-react';
+import { Camera, Upload, Receipt, PieChart, Settings, X, CheckCircle, LogOut } from 'lucide-react';
 import UsageBadge from '@/components/UsageBadge';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getAccessToken } from '@/lib/sessionUtils';
+import { signOut } from 'next-auth/react';
 
 interface ReceiptItem {
   id: string;
@@ -266,6 +267,15 @@ export default function Dashboard() {
                   <span>Settings</span>
                 </button>
               </li>
+              <li>
+                <button
+                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  className="flex items-center space-x-1 text-gray-600 hover:text-red-600"
+                >
+                  <LogOut size={18} />
+                  <span>Logout</span>
+                </button>
+              </li>
             </ul>
           </nav>
         </div>
@@ -513,8 +523,9 @@ export default function Dashboard() {
                 <label className="block text-gray-700 mb-2">Email</label>
                 <input 
                   type="email" 
-                  defaultValue="user@example.com"
-                  className="w-full p-3 border border-gray-300 rounded-lg"
+                  defaultValue={session?.user?.email ?? ''}
+                  disabled
+                  className="w-full p-3 border border-gray-300 rounded-lg bg-gray-100"
                 />
               </div>
               
@@ -522,7 +533,7 @@ export default function Dashboard() {
                 <label className="block text-gray-700 mb-2">Display Name</label>
                 <input 
                   type="text" 
-                  defaultValue="John Doe"
+                  defaultValue={session?.user?.name ?? ''}
                   className="w-full p-3 border border-gray-300 rounded-lg"
                 />
               </div>

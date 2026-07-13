@@ -32,27 +32,6 @@ export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   
-  // Loading state for auth check
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-primaryPastel">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
-      </div>
-    );
-  }
-  
-  // Redirect unauthenticated users
-  if (status === 'unauthenticated') {
-    useEffect(() => {
-      router.push('/login');
-    }, [router]);
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-primaryPastel">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
-      </div>
-    );
-  }
-
   const [activeTab, setActiveTab] = useState('dashboard');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -66,6 +45,13 @@ export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const itemsPerPage = 5;
+
+  // Handle unauthenticated redirect
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
 
   // Fetch receipt summary
   useEffect(() => {
@@ -90,7 +76,48 @@ export default function Dashboard() {
     }
   }, [session]);
 
-  // Fetch receipt history
+  // Initial load of receipt history
+  useEffect(() => {
+    const fetchReceiptHistory = async (page: number) => {
+      const accessToken = getAccessToken(session);
+      if (!accessToken) return;
+      
+      setLoadingHistory(true);
+      try {
+        const response = await api.get(`/api/receipts?page=${page}&limit=${itemsPerPage}`, accessToken);
+        
+        if (response.ok) {
+          const data = await response.json();
+          setReceiptHistory(prev => [...prev, ...data.receipts]);
+        }
+      } catch (error) {
+        console.error('Error fetching receipt history:', error);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    fetchReceiptHistory(currentPage);
+  }, []);
+
+  // Loading state for auth check
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-primaryPastel">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
+  
+  // Redirect unauthenticated users
+  if (status === 'unauthenticated') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-primaryPastel">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
+
   const fetchReceiptHistory = async (page: number) => {
     const accessToken = getAccessToken(session);
     if (!accessToken) return;
@@ -118,11 +145,6 @@ export default function Dashboard() {
       fetchReceiptHistory(nextPage);
     }
   };
-
-  // Initial load of receipt history
-  useEffect(() => {
-    fetchReceiptHistory(currentPage);
-  }, []);
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

@@ -14,7 +14,7 @@ const handler = NextAuth({
         // New Google sign-in: sync with backend to get OUR JWT, not Google's token
         try {
           const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-          const res = await fetch(`${backendUrl}/api/auth/sync`, {
+          const res = await fetch(`${backendUrl}/auth/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

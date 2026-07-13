@@ -21,7 +21,8 @@ export default function UsageBadge() {
       if (!session?.user) return;
 
       try {
-        const response = await fetch('/api/usage', {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'}/api/usage`, {
           headers: {
             'Authorization': `Bearer ${session.accessToken}`,
           },

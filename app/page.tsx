@@ -8,7 +8,7 @@ import {
   TrendingUp, 
   Download, 
   IndianRupee,
-  ReceiptText,
+  Receipt,
   Wallet,
   FileOutput
 } from 'lucide-react';
@@ -131,7 +131,7 @@ export default function LandingPage() {
             {/* Feature 2 */}
             <div className="bg-white bg-opacity-80 backdrop-blur-sm rounded-2xl p-8 shadow-lg text-center">
               <div className="bg-accentMint w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-                <ReceiptText className="text-purple-600 w-8 h-8" />
+                <Receipt className="text-purple-600 w-8 h-8" />
               </div>
               <h3 className="text-xl font-semibold text-purple-800 mb-3">Automatic Categorization</h3>
               <p className="text-gray-600">

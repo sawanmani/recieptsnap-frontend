@@ -44,6 +44,11 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<ReceiptSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editingReceipt, setEditingReceipt] = useState<ReceiptItem | null>(null);
+  const [editForm, setEditForm] = useState({ merchantName: '', totalAmount: '', currency: '', purchaseDate: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [scanMode, setScanMode] = useState<'image' | 'sms'>('image');
+  const [smsText, setSmsText] = useState('');
 
   const itemsPerPage = 5;
 
@@ -209,11 +214,104 @@ export default function Dashboard() {
 
       const data = await res.json();
       setParsedReceipt(data.receipt);
+
+      // Refresh receipt history and summary so the new scan shows up immediately
+      setReceiptHistory([]);
+      setCurrentPage(1);
+      fetchReceiptHistory(1);
+
+      if (session?.accessToken) {
+        const summaryRes = await api.get('/api/receipts/summary', session.accessToken);
+        if (summaryRes.ok) {
+          setSummary(await summaryRes.json());
+        }
+      }
     } catch (error: any) {
       console.error('Error scanning receipt:', error);
       alert(error.message || 'An error occurred while scanning the receipt');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleParseSms = async () => {
+    if (!session) {
+      window.location.href = '/login';
+      return;
+    }
+    const accessToken = getAccessToken(session);
+    if (!accessToken) {
+      alert('Authentication token not available. Please sign in again.');
+      window.location.href = '/login';
+      return;
+    }
+
+    setIsProcessing(true);
+    setParsedReceipt(null);
+
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'}/api/receipts/parse-sms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ smsText }),
+      });
+
+      if (res.status === 402) {
+        setShowPaywall(true);
+        return;
+      }
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to parse SMS');
+      }
+
+      const data = await res.json();
+      setParsedReceipt(data.receipt);
+      setSmsText('');
+
+      setReceiptHistory([]);
+      setCurrentPage(1);
+      fetchReceiptHistory(1);
+      const summaryRes = await api.get('/api/receipts/summary', session.accessToken);
+      if (summaryRes.ok) setSummary(await summaryRes.json());
+    } catch (error: any) {
+      console.error('Error parsing SMS:', error);
+      alert(error.message || 'An error occurred while parsing the SMS');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingReceipt || !session?.accessToken) return;
+    setSavingEdit(true);
+    try {
+      const res = await api.put(`/api/receipts/${editingReceipt.id}`, {
+        merchantName: editForm.merchantName || null,
+        totalAmount: editForm.totalAmount ? parseFloat(editForm.totalAmount) : null,
+        currency: editForm.currency || null,
+        purchaseDate: editForm.purchaseDate ? new Date(editForm.purchaseDate).toISOString() : null,
+      }, session.accessToken);
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to update receipt');
+      }
+
+      setEditingReceipt(null);
+      setReceiptHistory([]);
+      setCurrentPage(1);
+      fetchReceiptHistory(1);
+      const summaryRes = await api.get('/api/receipts/summary', session.accessToken);
+      if (summaryRes.ok) setSummary(await summaryRes.json());
+    } catch (error: any) {
+      alert(error.message || 'Failed to save changes');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -298,7 +396,6 @@ export default function Dashboard() {
                 <div className="bg-white rounded-lg p-6 shadow-md">
                   <h2 className="text-xl font-semibold mb-4 text-purple-800">Total Expenses</h2>
                   <p className="text-3xl font-bold text-gray-800">{formatCurrency(summary?.totalExpenses || 0)}</p>
-                  <p className="text-green-500 mt-2">↓ 12% from last month</p>
                 </div>
               )}
               
@@ -314,7 +411,6 @@ export default function Dashboard() {
                 <div className="bg-white rounded-lg p-6 shadow-md">
                   <h2 className="text-xl font-semibold mb-4 text-purple-800">This Month</h2>
                   <p className="text-3xl font-bold text-gray-800">{formatCurrency(summary?.thisMonthExpenses || 0)}</p>
-                  <p className="text-green-500 mt-2">↑ 8% from last month</p>
                 </div>
               )}
               
@@ -330,7 +426,6 @@ export default function Dashboard() {
                 <div className="bg-white rounded-lg p-6 shadow-md">
                   <h2 className="text-xl font-semibold mb-4 text-purple-800">Receipts Scanned</h2>
                   <p className="text-3xl font-bold text-gray-800">{summary?.receiptCount || 0}</p>
-                  <p className="text-green-500 mt-2">↑ 5% from last month</p>
                 </div>
               )}
             </div>
@@ -347,44 +442,81 @@ export default function Dashboard() {
             <div className="bg-white rounded-2xl p-8 shadow-md">
               <h2 className="text-2xl font-semibold mb-6 text-center text-purple-800">Upload Receipt</h2>
               
-              {!imagePreview && !isProcessing && !parsedReceipt && (
-                <div 
-                  className="border-2 border-dashed border-purple-300 rounded-2xl p-12 text-center cursor-pointer hover:bg-primaryPastel transition-colors"
-                  onClick={() => fileInputRef.current?.click()}
+              <div className="flex space-x-2 mb-4">
+                <button
+                  onClick={() => setScanMode('image')}
+                  className={`px-3 py-1 rounded text-sm ${scanMode === 'image' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'}`}
                 >
-                  <Camera className="mx-auto h-12 w-12 text-purple-500" />
-                  <p className="mt-4 text-lg text-gray-600">Click to upload receipt image</p>
-                  <p className="mt-2 text-gray-500">Supports JPG, PNG, WEBP (max 8MB)</p>
-                  <button className="mt-6 bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors">
-                    Select Image
-                  </button>
-                </div>
+                  Upload Image
+                </button>
+                <button
+                  onClick={() => setScanMode('sms')}
+                  className={`px-3 py-1 rounded text-sm ${scanMode === 'sms' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                >
+                  Paste SMS
+                </button>
+              </div>
+              
+              {scanMode === 'image' && (
+                <>
+                  {!imagePreview && !isProcessing && !parsedReceipt && (
+                    <div 
+                      className="border-2 border-dashed border-purple-300 rounded-2xl p-12 text-center cursor-pointer hover:bg-primaryPastel transition-colors"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Camera className="mx-auto h-12 w-12 text-purple-500" />
+                      <p className="mt-4 text-lg text-gray-600">Click to upload receipt image</p>
+                      <p className="mt-2 text-gray-500">Supports JPG, PNG, WEBP (max 8MB)</p>
+                      <button className="mt-6 bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors">
+                        Select Image
+                      </button>
+                    </div>
+                  )}
+                  
+                  {imagePreview && !isProcessing && !parsedReceipt && (
+                    <div className="text-center">
+                      <div className="relative inline-block">
+                        <img 
+                          src={imagePreview} 
+                          alt="Receipt preview" 
+                          className="max-h-64 rounded-2xl mx-auto"
+                        />
+                        <button 
+                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                          onClick={() => setImagePreview(null)}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                      
+                      <div className="mt-4">
+                        <button 
+                          className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors"
+                          onClick={handleScanReceipt}
+                        >
+                          Scan Receipt
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
               
-              {imagePreview && !isProcessing && !parsedReceipt && (
-                <div className="text-center">
-                  <div className="relative inline-block">
-                    <img 
-                      src={imagePreview} 
-                      alt="Receipt preview" 
-                      className="max-h-64 rounded-2xl mx-auto"
-                    />
-                    <button 
-                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                      onClick={() => setImagePreview(null)}
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                  
-                  <div className="mt-4">
-                    <button 
-                      className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors"
-                      onClick={handleScanReceipt}
-                    >
-                      Scan Receipt
-                    </button>
-                  </div>
+              {scanMode === 'sms' && (
+                <div>
+                  <textarea
+                    value={smsText}
+                    onChange={(e) => setSmsText(e.target.value)}
+                    placeholder="Paste your bank/UPI debit or credit SMS here..."
+                    className="w-full p-3 border border-gray-300 rounded-lg h-32"
+                  />
+                  <button
+                    onClick={handleParseSms}
+                    disabled={isProcessing || !smsText.trim()}
+                    className="mt-3 w-full bg-purple-600 text-white py-2 rounded-lg disabled:opacity-50"
+                  >
+                    {isProcessing ? 'Parsing...' : 'Parse SMS'}
+                  </button>
                 </div>
               )}
               
@@ -442,6 +574,7 @@ export default function Dashboard() {
                       onClick={() => {
                         setImagePreview(null);
                         setParsedReceipt(null);
+                        setSmsText('');
                       }}
                     >
                       Scan Another
@@ -472,6 +605,7 @@ export default function Dashboard() {
                     <th className="py-3 px-4 text-left rounded-l-lg">Date</th>
                     <th className="py-3 px-4 text-left">Merchant</th>
                     <th className="py-3 px-4 text-left">Amount</th>
+                    <th className="py-3 px-4 text-left">Actions</th>
                     <th className="py-3 px-4 text-left rounded-r-lg">Status</th>
                   </tr>
                 </thead>
@@ -481,6 +615,22 @@ export default function Dashboard() {
                       <td className="py-3 px-4">{new Date(receipt.purchaseDate).toLocaleDateString()}</td>
                       <td className="py-3 px-4">{receipt.merchantName || 'Unknown'}</td>
                       <td className="py-3 px-4 text-red-500">{receipt.currency} {receipt.totalAmount?.toFixed(2)}</td>
+                      <td className="py-3 px-4">
+                        <button
+                          onClick={() => {
+                            setEditingReceipt(receipt);
+                            setEditForm({
+                              merchantName: receipt.merchantName || '',
+                              totalAmount: receipt.totalAmount?.toString() || '',
+                              currency: receipt.currency || 'INR',
+                              purchaseDate: receipt.purchaseDate ? new Date(receipt.purchaseDate).toISOString().split('T')[0] : '',
+                            });
+                          }}
+                          className="text-purple-600 hover:text-purple-800 text-sm"
+                        >
+                          Edit
+                        </button>
+                      </td>
                       <td className="py-3 px-4">
                         <span className="bg-green-100 text-green-800 px-2 py-1 rounded">Processed</span>
                       </td>
@@ -564,6 +714,64 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+
+      {/* Edit Receipt Modal */}
+      {editingReceipt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4">Edit Receipt</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Merchant Name</label>
+                <input
+                  type="text"
+                  value={editForm.merchantName}
+                  onChange={(e) => setEditForm({ ...editForm, merchantName: e.target.value })}
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Amount</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.totalAmount}
+                  onChange={(e) => setEditForm({ ...editForm, totalAmount: e.target.value })}
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Currency</label>
+                <input
+                  type="text"
+                  value={editForm.currency}
+                  onChange={(e) => setEditForm({ ...editForm, currency: e.target.value })}
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Purchase Date</label>
+                <input
+                  type="date"
+                  value={editForm.purchaseDate}
+                  onChange={(e) => setEditForm({ ...editForm, purchaseDate: e.target.value })}
+                  className="w-full p-2 border border-gray-300 rounded"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2 mt-4">
+              <button onClick={() => setEditingReceipt(null)} className="px-4 py-2 text-gray-600">Cancel</button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={savingEdit}
+                className="px-4 py-2 bg-purple-600 text-white rounded disabled:opacity-50"
+              >
+                {savingEdit ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Paywall Modal */}
       {showPaywall && (

@@ -15,11 +15,27 @@ interface ReceiptItem {
   totalAmount: number | null;
   currency: string | null;
   purchaseDate: string;
+  transactionType?: 'DEBIT' | 'CREDIT' | null;
   items: Array<{
     name: string;
     quantity: number | null;
     price: number | null;
   }>;
+  createdAt: string;
+}
+
+interface ReceiptData {
+  id: string;
+  merchantName: string | null;
+  totalAmount: number | null;
+  currency: string | null;
+  purchaseDate: string;
+  transactionType?: 'DEBIT' | 'CREDIT' | null;
+  items: Array<{
+    name: string;
+    quantity: number | null;
+    price: number | null;
+  }> | null;
   createdAt: string;
 }
 
@@ -34,21 +50,29 @@ export default function Dashboard() {
   const router = useRouter();
   
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [parsedReceipt, setParsedReceipt] = useState<any>(null);
+  const [parsedReceipt, setParsedReceipt] = useState<ReceiptItem | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
-  const [receiptHistory, setReceiptHistory] = useState<ReceiptItem[]>([]);
+  const [receiptHistory, setReceiptHistory] = useState<ReceiptData[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [summary, setSummary] = useState<ReceiptSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [editingReceipt, setEditingReceipt] = useState<ReceiptItem | null>(null);
-  const [editForm, setEditForm] = useState({ merchantName: '', totalAmount: '', currency: '', purchaseDate: '' });
+  const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
+  const [editForm, setEditForm] = useState<Partial<ReceiptData>>({
+    merchantName: '',
+    totalAmount: 0,
+    currency: '',
+    purchaseDate: '',
+    transactionType: 'DEBIT'
+  });
   const [savingEdit, setSavingEdit] = useState(false);
   const [scanMode, setScanMode] = useState<'image' | 'sms'>('image');
   const [smsText, setSmsText] = useState('');
+  const [usageRefreshKey, setUsageRefreshKey] = useState(0);
+  const [userPlan, setUserPlan] = useState<string | null>(null);
 
   const itemsPerPage = 5;
 
@@ -152,26 +176,20 @@ export default function Dashboard() {
     }
   };
 
-  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setImagePreview(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const maxFiles = userPlan === 'FREE' ? 1 : 5;
+    setSelectedFiles(files.slice(0, maxFiles));
   };
 
   const handleScanReceipt = async () => {
     if (!session) {
-      // Redirect to login
       window.location.href = '/login';
       return;
     }
 
-    if (!imagePreview) {
-      alert('Please select an image first');
+    if (selectedFiles.length === 0) {
+      alert('Please select at least one image first');
       return;
     }
 
@@ -187,12 +205,8 @@ export default function Dashboard() {
 
     try {
       const formData = new FormData();
-      // Convert data URL to blob
-      const response = await fetch(imagePreview);
-      const blob = await response.blob();
-      formData.append('image', blob, 'receipt.jpg');
+      selectedFiles.forEach((file) => formData.append('images', file));
 
-      // Using fetch directly for multipart form data
       const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'}/api/receipts/scan`, {
         method: 'POST',
         body: formData,
@@ -213,19 +227,25 @@ export default function Dashboard() {
       }
 
       const data = await res.json();
-      setParsedReceipt(data.receipt);
+      const successfulReceipts = data.results.filter((r: any) => r.success).map((r: any) => r.receipt);
+      const failedFiles = data.results.filter((r: any) => !r.success);
 
-      // Refresh receipt history and summary so the new scan shows up immediately
+      if (failedFiles.length > 0) {
+        alert(
+          `${successfulReceipts.length} of ${data.results.length} scanned successfully.\n\nFailed: ${failedFiles
+            .map((f: any) => `${f.filename} — ${f.error}`)
+            .join('\n')}`
+        );
+      }
+
+      setSelectedFiles([]);
       setReceiptHistory([]);
       setCurrentPage(1);
       fetchReceiptHistory(1);
+      const summaryRes = await api.get('/api/receipts/summary', session.accessToken);
+      if (summaryRes.ok) setSummary(await summaryRes.json());
 
-      if (session?.accessToken) {
-        const summaryRes = await api.get('/api/receipts/summary', session.accessToken);
-        if (summaryRes.ok) {
-          setSummary(await summaryRes.json());
-        }
-      }
+      setUsageRefreshKey((prev) => prev + 1); // Trigger usage badge refresh
     } catch (error: any) {
       console.error('Error scanning receipt:', error);
       alert(error.message || 'An error occurred while scanning the receipt');
@@ -278,6 +298,8 @@ export default function Dashboard() {
       fetchReceiptHistory(1);
       const summaryRes = await api.get('/api/receipts/summary', session.accessToken);
       if (summaryRes.ok) setSummary(await summaryRes.json());
+
+      setUsageRefreshKey((prev) => prev + 1); // Trigger usage badge refresh
     } catch (error: any) {
       console.error('Error parsing SMS:', error);
       alert(error.message || 'An error occurred while parsing the SMS');
@@ -291,10 +313,11 @@ export default function Dashboard() {
     setSavingEdit(true);
     try {
       const res = await api.put(`/api/receipts/${editingReceipt.id}`, {
-        merchantName: editForm.merchantName || null,
-        totalAmount: editForm.totalAmount ? parseFloat(editForm.totalAmount) : null,
-        currency: editForm.currency || null,
-        purchaseDate: editForm.purchaseDate ? new Date(editForm.purchaseDate).toISOString() : null,
+        merchantName: editForm.merchantName || '',
+        totalAmount: editForm.totalAmount || 0,
+        currency: editForm.currency || 'INR',
+        purchaseDate: editForm.purchaseDate ? new Date(editForm.purchaseDate).toISOString() : new Date().toISOString(),
+        transactionType: editForm.transactionType || 'DEBIT'
       }, session.accessToken);
 
       if (!res.ok) {
@@ -308,6 +331,8 @@ export default function Dashboard() {
       fetchReceiptHistory(1);
       const summaryRes = await api.get('/api/receipts/summary', session.accessToken);
       if (summaryRes.ok) setSummary(await summaryRes.json());
+
+      setUsageRefreshKey((prev) => prev + 1); // Trigger usage badge refresh
     } catch (error: any) {
       alert(error.message || 'Failed to save changes');
     } finally {
@@ -317,8 +342,18 @@ export default function Dashboard() {
 
   const closeModal = () => {
     setShowPaywall(false);
-    setImagePreview(null);
     setParsedReceipt(null);
+  };
+
+  const openEditModal = (receipt: ReceiptData) => {
+    setEditingReceipt(receipt);
+    setEditForm({
+      merchantName: receipt.merchantName || '',
+      totalAmount: receipt.totalAmount || 0,
+      currency: receipt.currency || '',
+      purchaseDate: receipt.purchaseDate || '',
+      transactionType: receipt.transactionType || 'DEBIT',
+    });
   };
 
   // Format currency in INR
@@ -328,6 +363,43 @@ export default function Dashboard() {
       style: 'currency', 
       currency: 'INR' 
     }).format(amount);
+  };
+
+  // Fetch user plan alongside other initial data loads
+  useEffect(() => {
+    if (session?.accessToken) {
+      api.get('/api/usage', session.accessToken).then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          setUserPlan(data.plan);
+        }
+      });
+    }
+  }, [session]);
+
+  const handleExportCsv = async () => {
+    if (!session?.accessToken) return;
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'}/api/receipts/export`,
+        { headers: { 'Authorization': `Bearer ${session.accessToken}` } }
+      );
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to export');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `receiptsnap-export-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      alert(error.message || 'Failed to export receipts');
+    }
   };
 
   return (
@@ -432,7 +504,7 @@ export default function Dashboard() {
             
             {/* Usage Badge Column */}
             <div>
-              <UsageBadge />
+              <UsageBadge refreshKey={usageRefreshKey} />
             </div>
           </div>
         )}
@@ -459,47 +531,114 @@ export default function Dashboard() {
               
               {scanMode === 'image' && (
                 <>
-                  {!imagePreview && !isProcessing && !parsedReceipt && (
-                    <div 
-                      className="border-2 border-dashed border-purple-300 rounded-2xl p-12 text-center cursor-pointer hover:bg-primaryPastel transition-colors"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Camera className="mx-auto h-12 w-12 text-purple-500" />
-                      <p className="mt-4 text-lg text-gray-600">Click to upload receipt image</p>
-                      <p className="mt-2 text-gray-500">Supports JPG, PNG, WEBP (max 8MB)</p>
-                      <button className="mt-6 bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors">
-                        Select Image
+                  {!isProcessing && !parsedReceipt && (
+                    <div className="space-y-4">
+                      {/* File selection */}
+                      <div className="border-2 border-dashed border-purple-300 rounded-lg p-6 text-center">
+                        <Upload className="mx-auto h-12 w-12 text-purple-400" />
+                        <p className="mt-2 text-sm text-gray-600">
+                          {userPlan && userPlan !== 'FREE' 
+                            ? 'Select up to 5 receipt images to scan' 
+                            : 'Select one receipt image to scan'}
+                        </p>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple={userPlan !== 'FREE'}
+                          onChange={handleFileChange}
+                          ref={fileInputRef}
+                          className="hidden"
+                        />
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="mt-3 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                        >
+                          Choose Files
+                        </button>
+                      </div>
+
+                      {/* Selected files preview */}
+                      {selectedFiles.length > 0 && (
+                        <div className="text-sm text-gray-600 mt-2">
+                          {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''} selected:{' '}
+                          {selectedFiles.map((f) => f.name).join(', ')}
+                        </div>
+                      )}
+
+                      <button
+                        onClick={handleScanReceipt}
+                        disabled={isProcessing || selectedFiles.length === 0}
+                        className="w-full bg-purple-600 text-white py-2 rounded-lg disabled:opacity-50"
+                      >
+                        {isProcessing ? 'Scanning...' : `Scan ${selectedFiles.length > 1 ? 'Batch' : 'Receipt'}`}
                       </button>
                     </div>
                   )}
-                  
-                  {imagePreview && !isProcessing && !parsedReceipt && (
-                    <div className="text-center">
-                      <div className="relative inline-block">
-                        <img 
-                          src={imagePreview} 
-                          alt="Receipt preview" 
-                          className="max-h-64 rounded-2xl mx-auto"
-                        />
-                        <button 
-                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                          onClick={() => setImagePreview(null)}
-                        >
-                          <X size={16} />
-                        </button>
+
+                  {isProcessing && (
+                    <div className="text-center py-12">
+                      <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
+                      <p className="text-lg text-gray-600">Processing your receipt{selectedFiles.length > 1 ? 's' : ''}...</p>
+                      <p className="text-sm text-gray-500">This may take a few seconds</p>
+                    </div>
+                  )}
+
+                  {parsedReceipt && (
+                    <div className="bg-white rounded-2xl shadow-md p-6 border border-green-200">
+                      <div className="flex justify-between items-start">
+                        <h3 className="text-xl font-semibold text-green-700">Receipt Parsed Successfully!</h3>
+                        <CheckCircle className="text-green-500" size={24} />
                       </div>
                       
-                      <div className="mt-4">
+                      <div className="mt-4 space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Merchant:</span>
+                          <span className="font-medium">{parsedReceipt.merchantName || 'N/A'}</span>
+                        </div>
+                        
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Total Amount:</span>
+                          <span className="font-medium">{parsedReceipt.currency} {parsedReceipt.totalAmount?.toFixed(2)}</span>
+                        </div>
+                        
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Date:</span>
+                          <span className="font-medium">{parsedReceipt.purchaseDate ? new Date(parsedReceipt.purchaseDate).toLocaleDateString() : 'N/A'}</span>
+                        </div>
+                        
+                        <div className="mt-4">
+                          <h4 className="font-medium text-gray-700 mb-2">Items:</h4>
+                          <ul className="space-y-1">
+                            {parsedReceipt.items && parsedReceipt.items.length > 0 ? (
+                              parsedReceipt.items.map((item: any, index: number) => (
+                                <li key={index} className="flex justify-between text-sm">
+                                  <span>{item.name}</span>
+                                  <span>{item.quantity} × {item.price?.toFixed(2) || 'N/A'}</span>
+                                </li>
+                              ))
+                            ) : (
+                              <li>No items listed</li>
+                            )}
+                          </ul>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-6 flex justify-end">
                         <button 
-                          className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors"
-                          onClick={handleScanReceipt}
+                          className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                          onClick={() => {
+                            setSelectedFiles([]);
+                            setParsedReceipt(null);
+                            setSmsText('');
+                          }}
                         >
-                          Scan Receipt
+                          Scan Another
                         </button>
                       </div>
                     </div>
                   )}
                 </>
+
               )}
               
               {scanMode === 'sms' && (
@@ -519,84 +658,23 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
-              
-              {isProcessing && (
-                <div className="text-center py-12">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
-                  <p className="text-lg text-gray-600">Processing your receipt...</p>
-                  <p className="text-sm text-gray-500">This may take a few seconds</p>
-                </div>
-              )}
-              
-              {parsedReceipt && (
-                <div className="bg-white rounded-2xl shadow-md p-6 border border-green-200">
-                  <div className="flex justify-between items-start">
-                    <h3 className="text-xl font-semibold text-green-700">Receipt Parsed Successfully!</h3>
-                    <CheckCircle className="text-green-500" size={24} />
-                  </div>
-                  
-                  <div className="mt-4 space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Merchant:</span>
-                      <span className="font-medium">{parsedReceipt.merchantName || 'N/A'}</span>
-                    </div>
-                    
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Total Amount:</span>
-                      <span className="font-medium">{parsedReceipt.currency} {parsedReceipt.totalAmount?.toFixed(2)}</span>
-                    </div>
-                    
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Date:</span>
-                      <span className="font-medium">{parsedReceipt.purchaseDate ? new Date(parsedReceipt.purchaseDate).toLocaleDateString() : 'N/A'}</span>
-                    </div>
-                    
-                    <div className="mt-4">
-                      <h4 className="font-medium text-gray-700 mb-2">Items:</h4>
-                      <ul className="space-y-1">
-                        {parsedReceipt.items && parsedReceipt.items.length > 0 ? (
-                          parsedReceipt.items.map((item: any, index: number) => (
-                            <li key={index} className="flex justify-between text-sm">
-                              <span>{item.name}</span>
-                              <span>{item.quantity} × {item.price?.toFixed(2) || 'N/A'}</span>
-                            </li>
-                          ))
-                        ) : (
-                          <li>No items listed</li>
-                        )}
-                      </ul>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-6 flex justify-end">
-                    <button 
-                      className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
-                      onClick={() => {
-                        setImagePreview(null);
-                        setParsedReceipt(null);
-                        setSmsText('');
-                      }}
-                    >
-                      Scan Another
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleImageChange}
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-              />
             </div>
           </div>
         )}
 
         {activeTab === 'receipts' && (
           <div className="bg-white rounded-2xl p-6 shadow-md">
-            <h2 className="text-2xl font-semibold mb-6 text-purple-800">Receipt History</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-semibold text-purple-800">Receipt History</h2>
+              {userPlan && userPlan !== 'FREE' && (
+                <button
+                  onClick={handleExportCsv}
+                  className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm hover:bg-purple-200"
+                >
+                  Export CSV
+                </button>
+              )}
+            </div>
             
             <div className="overflow-x-auto">
               <table className="min-w-full">
@@ -621,9 +699,10 @@ export default function Dashboard() {
                             setEditingReceipt(receipt);
                             setEditForm({
                               merchantName: receipt.merchantName || '',
-                              totalAmount: receipt.totalAmount?.toString() || '',
+                              totalAmount: receipt.totalAmount || 0,  // Fixed: keeping it as number
                               currency: receipt.currency || 'INR',
                               purchaseDate: receipt.purchaseDate ? new Date(receipt.purchaseDate).toISOString().split('T')[0] : '',
+                              transactionType: receipt.transactionType || 'DEBIT',
                             });
                           }}
                           className="text-purple-600 hover:text-purple-800 text-sm"
@@ -632,7 +711,15 @@ export default function Dashboard() {
                         </button>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded">Processed</span>
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            receipt.transactionType === 'CREDIT'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          {receipt.transactionType === 'CREDIT' ? 'Credited' : 'Debited'}
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -720,12 +807,12 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <h3 className="text-lg font-semibold mb-4">Edit Receipt</h3>
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Merchant Name</label>
                 <input
                   type="text"
-                  value={editForm.merchantName}
+                  value={editForm.merchantName || ''}
                   onChange={(e) => setEditForm({ ...editForm, merchantName: e.target.value })}
                   className="w-full p-2 border border-gray-300 rounded"
                 />
@@ -734,9 +821,11 @@ export default function Dashboard() {
                 <label className="block text-sm text-gray-600 mb-1">Amount</label>
                 <input
                   type="number"
-                  step="0.01"
-                  value={editForm.totalAmount}
-                  onChange={(e) => setEditForm({ ...editForm, totalAmount: e.target.value })}
+                  value={editForm.totalAmount || 0}
+                  onChange={(e) => setEditForm({ 
+                    ...editForm, 
+                    totalAmount: parseFloat(e.target.value) || 0 
+                  })}
                   className="w-full p-2 border border-gray-300 rounded"
                 />
               </div>
@@ -744,19 +833,33 @@ export default function Dashboard() {
                 <label className="block text-sm text-gray-600 mb-1">Currency</label>
                 <input
                   type="text"
-                  value={editForm.currency}
+                  value={editForm.currency || ''}
                   onChange={(e) => setEditForm({ ...editForm, currency: e.target.value })}
                   className="w-full p-2 border border-gray-300 rounded"
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Purchase Date</label>
+                <label className="block text-sm text-gray-600 mb-1">Date</label>
                 <input
                   type="date"
-                  value={editForm.purchaseDate}
+                  value={editForm.purchaseDate || ''}
                   onChange={(e) => setEditForm({ ...editForm, purchaseDate: e.target.value })}
                   className="w-full p-2 border border-gray-300 rounded"
                 />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Type</label>
+                <select
+                  value={editForm.transactionType || 'DEBIT'}
+                  onChange={(e) => setEditForm({ 
+                    ...editForm, 
+                    transactionType: e.target.value as 'DEBIT' | 'CREDIT' 
+                  })}
+                  className="w-full p-2 border border-gray-300 rounded"
+                >
+                  <option value="DEBIT">Debited</option>
+                  <option value="CREDIT">Credited</option>
+                </select>
               </div>
             </div>
             <div className="flex justify-end space-x-2 mt-4">

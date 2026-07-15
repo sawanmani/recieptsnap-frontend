@@ -3,11 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { CheckIcon } from '@heroicons/react/24/solid';
 
 export default function PricingPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubscribe = async (planType: 'MONTHLY' | 'YEARLY') => {
     if (!session) {
@@ -15,44 +17,43 @@ export default function PricingPage() {
       return;
     }
 
-    setLoading(true);
-
     try {
-      // Call backend to create a subscription
-      const response = await fetch('/api/billing/create-subscription', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.accessToken}`,
-        },
-        body: JSON.stringify({ planType }),
-      });
+      setLoading(true);
+      
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'}/api/billing/create-subscription`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.accessToken}`,
+          },
+          body: JSON.stringify({ planId: planType.toLowerCase() }),
+        }
+      );
 
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to create subscription');
       }
 
-      const subscriptionData = await response.json();
-
-      // Initialize Razorpay checkout
+      const data = await response.json();
+      
+      // Open Razorpay checkout
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, // Enter the Key ID generated from the Dashboard
-        subscription_id: subscriptionData.id,
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        subscription_id: data.subscriptionId,
         name: 'ReceiptSnap',
-        description: planType === 'MONTHLY' ? 'Monthly Premium Plan' : 'Yearly Premium Plan',
-        theme: {
-          color: '#E8DFF5', // Using the primary pastel color
+        description: `${planType} Subscription`,
+        handler: function (response: any) {
+          console.log(response);
+          alert('Payment successful!');
+          router.refresh(); // Refresh to update subscription status
         },
         modal: {
           ondismiss: function() {
             console.log('Checkout closed by user');
           }
-        },
-        handler: function(response: any) {
-          console.log('Payment successful', response);
-          alert('Subscription created successfully!');
-          router.push('/dashboard');
         }
       };
 
@@ -70,6 +71,11 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-primaryPastel py-12">
       <div className="container mx-auto px-4 max-w-6xl">
+        {error && (
+          <div className="mb-8 p-4 bg-red-50 text-red-600 rounded-lg">
+            {error}
+          </div>
+        )}
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-purple-800 mb-4">Choose Your Plan</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -79,103 +85,76 @@ export default function PricingPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
           {/* Monthly Plan Card */}
-          <div className="bg-white rounded-2xl shadow-lg p-8 border border-purple-100 transform transition duration-500 hover:scale-105">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold text-purple-800 mb-2">Monthly Plan</h2>
-              <div className="mb-6">
-                <span className="text-4xl font-bold text-gray-800">₹99</span>
-                <span className="text-gray-600">/month</span>
-              </div>
-              <ul className="space-y-3 mb-8 text-left">
-                <li className="flex items-center">
-                  <svg className="h-5 w-5 text-accentMint mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Unlimited receipt scans
-                </li>
-                <li className="flex items-center">
-                  <svg className="h-5 w-5 text-accentMint mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Advanced analytics
-                </li>
-                <li className="flex items-center">
-                  <svg className="h-5 w-5 text-accentMint mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Priority support
-                </li>
-                <li className="flex items-center opacity-50">
-                  <svg className="h-5 w-5 text-accentMint mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Annual reports (coming soon)
-                </li>
-              </ul>
-              <button
-                onClick={() => handleSubscribe('MONTHLY')}
-                disabled={loading}
-                className={`w-full py-3 px-6 rounded-lg font-semibold transition-colors ${
-                  loading 
-                    ? 'bg-gray-300 cursor-not-allowed' 
-                    : 'bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white'
-                }`}
-              >
-                {loading ? 'Processing...' : 'Subscribe Monthly'}
-              </button>
+          <div className="p-6 bg-white rounded-lg shadow-md border border-gray-200 h-full">
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Monthly</h3>
+            <div className="mb-4">
+              <span className="text-4xl font-bold text-gray-800">₹199</span>
+              <span className="text-gray-600">/month</span>
             </div>
+            <ul className="space-y-2 mb-6">
+              <li className="flex items-center">
+                <CheckIcon className="h-5 w-5 text-green-500 mr-2" />
+                <span className="text-gray-700">Unlimited Receipt Scans</span>
+              </li>
+              <li className="flex items-center">
+                <CheckIcon className="h-5 w-5 text-green-500 mr-2" />
+                <span className="text-gray-700">SMS Parsing</span>
+              </li>
+              <li className="flex items-center">
+                <CheckIcon className="h-5 w-5 text-green-500 mr-2" />
+                <span className="text-gray-700">Receipt Editing</span>
+              </li>
+              <li className="flex items-center">
+                <CheckIcon className="h-5 w-5 text-green-500 mr-2" />
+                <span className="text-gray-700">Expense Reports</span>
+              </li>
+            </ul>
+            <button
+              onClick={() => handleSubscribe('MONTHLY')}
+              disabled={loading}
+              className={`w-full py-3 px-4 rounded-md text-white font-medium ${
+                loading ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
+              } transition-colors`}
+            >
+              {loading ? 'Processing...' : 'Subscribe'}
+            </button>
           </div>
 
           {/* Yearly Plan Card */}
-          <div className="bg-white rounded-2xl shadow-lg p-8 border-2 border-purple-400 transform transition duration-500 hover:scale-105 relative">
-            <div className="absolute top-0 right-0 bg-purple-500 text-white px-4 py-1 rounded-bl-lg rounded-tr-2xl text-sm font-semibold">
-              MOST POPULAR
+          <div className="p-6 bg-white rounded-lg shadow-md border border-gray-200 h-full">
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Yearly</h3>
+            <div className="mb-4">
+              <span className="text-4xl font-bold text-gray-800">₹999</span>
+              <span className="text-gray-600">/year</span>
             </div>
-            <div className="text-center pt-6">
-              <h2 className="text-2xl font-bold text-purple-800 mb-2">Yearly Plan</h2>
-              <div className="mb-6">
-                <span className="text-4xl font-bold text-gray-800">₹999</span>
-                <span className="text-gray-600">/year</span>
-                <div className="text-sm text-green-600 font-medium mt-1">(Save ₹189)</div>
-              </div>
-              <ul className="space-y-3 mb-8 text-left">
-                <li className="flex items-center">
-                  <svg className="h-5 w-5 text-accentMint mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Unlimited receipt scans
-                </li>
-                <li className="flex items-center">
-                  <svg className="h-5 w-5 text-accentMint mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Advanced analytics
-                </li>
-                <li className="flex items-center">
-                  <svg className="h-5 w-5 text-accentMint mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Priority support
-                </li>
-                <li className="flex items-center">
-                  <svg className="h-5 w-5 text-accentMint mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Annual reports
-                </li>
-              </ul>
-              <button
-                onClick={() => handleSubscribe('YEARLY')}
-                disabled={loading}
-                className={`w-full py-3 px-6 rounded-lg font-semibold transition-colors ${
-                  loading 
-                    ? 'bg-gray-300 cursor-not-allowed' 
-                    : 'bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white'
-                }`}
-              >
-                {loading ? 'Processing...' : 'Subscribe Yearly'}
-              </button>
-            </div>
+            <div className="text-sm text-green-600 font-medium mt-1">(Save ₹1,389/year)</div>
+            <ul className="space-y-2 mb-6 mt-4">
+              <li className="flex items-center">
+                <CheckIcon className="h-5 w-5 text-green-500 mr-2" />
+                <span className="text-gray-700">Unlimited Receipt Scans</span>
+              </li>
+              <li className="flex items-center">
+                <CheckIcon className="h-5 w-5 text-green-500 mr-2" />
+                <span className="text-gray-700">SMS Parsing</span>
+              </li>
+              <li className="flex items-center">
+                <CheckIcon className="h-5 w-5 text-green-500 mr-2" />
+                <span className="text-gray-700">Receipt Editing</span>
+              </li>
+              <li className="flex items-center">
+                <CheckIcon className="h-5 w-5 text-green-500 mr-2" />
+                <span className="text-gray-700">Expense Reports</span>
+              </li>
+            </ul>
+            <button
+              onClick={() => handleSubscribe('YEARLY')}
+              disabled={loading}
+              className={`w-full py-3 px-4 rounded-md text-white font-medium ${
+                loading ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
+              } transition-colors`}
+            >
+              {loading ? 'Processing...' : 'Subscribe'}
+            </button>
           </div>
         </div>
 

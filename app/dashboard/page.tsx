@@ -130,6 +130,18 @@ export default function Dashboard() {
     fetchReceiptHistory(currentPage);
   }, []);
 
+  // Fetch user plan alongside other initial data loads
+  useEffect(() => {
+    if (session?.accessToken) {
+      api.get('/api/usage', session.accessToken).then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          setUserPlan(data.plan);
+        }
+      });
+    }
+  }, [session]);
+
   // Loading state for auth check
   if (status === 'loading') {
     return (
@@ -364,18 +376,6 @@ export default function Dashboard() {
       currency: 'INR' 
     }).format(amount);
   };
-
-  // Fetch user plan alongside other initial data loads
-  useEffect(() => {
-    if (session?.accessToken) {
-      api.get('/api/usage', session.accessToken).then(async (res) => {
-        if (res.ok) {
-          const data = await res.json();
-          setUserPlan(data.plan);
-        }
-      });
-    }
-  }, [session]);
 
   const handleExportCsv = async () => {
     if (!session?.accessToken) return;

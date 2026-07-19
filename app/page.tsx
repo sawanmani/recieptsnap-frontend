@@ -12,6 +12,7 @@ import {
   Wallet,
   FileOutput
 } from 'lucide-react';
+import CursorScrubVideo from '@/components/CursorScrubVideo';
 
 // AnimatedOrbs component for floating background shapes
 const AnimatedOrbs = () => {
@@ -57,30 +58,26 @@ export default function LandingPage() {
   const buttonHref = status === 'authenticated' ? '/dashboard' : '/login';
 
   return (
-    <div 
-      className="min-h-screen bg-gradient-to-br from-primaryPastel via-accentMint to-accentPeach relative overflow-hidden"
-      style={{
-        backgroundImage: "url('/images/hero-bg.jpg')", // TODO: Replace with actual hero background image - this is a placeholder path the human will replace
-      }}
-    >
+    <div className="min-h-screen relative overflow-hidden">
+      <CursorScrubVideo />
       <AnimatedOrbs />
       
       <div className="container mx-auto px-4 py-8 relative z-10">
         {/* Navigation */}
         <nav className="flex justify-between items-center py-6">
-          <div className="text-2xl font-bold text-purple-800">ReceiptSnap</div>
+          <div className="text-2xl font-bold text-white">ReceiptSnap</div>
           <div className="space-x-4">
             {status === 'authenticated' ? (
               <Link 
                 href="/dashboard" 
-                className="bg-white text-purple-800 px-4 py-2 rounded-lg font-medium hover:bg-primaryPastel transition-colors"
+                className="bg-white bg-opacity-20 text-white px-4 py-2 rounded-lg font-medium hover:bg-opacity-30 transition-colors backdrop-blur-sm"
               >
                 Dashboard
               </Link>
             ) : (
               <Link 
                 href="/login" 
-                className="bg-white text-purple-800 px-4 py-2 rounded-lg font-medium hover:bg-primaryPastel transition-colors"
+                className="bg-white bg-opacity-20 text-white px-4 py-2 rounded-lg font-medium hover:bg-opacity-30 transition-colors backdrop-blur-sm"
               >
                 Sign In
               </Link>
@@ -89,22 +86,25 @@ export default function LandingPage() {
         </nav>
 
         {/* Hero Section */}
-        <section className="flex flex-col items-center justify-center text-center py-20">
-          <h1 className="text-5xl md:text-6xl font-bold text-purple-800 mb-6">
-            Smart Receipt Scanning
-          </h1>
-          <p className="text-xl text-gray-700 max-w-2xl mb-10">
-            Automatically scan receipts, track UPI payments, and simplify expense management for Indian freelancers during tax filing.
-          </p>
-          
-          {isMounted && (
-            <Link 
-              href={buttonHref}
-              className="bg-purple-600 text-white px-8 py-4 rounded-full text-lg font-semibold hover:bg-purple-700 transition-colors shadow-lg transform hover:scale-105 duration-300"
-            >
-              Try Now
-            </Link>
-          )}
+        <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+          <CursorScrubVideo />
+          <div className="relative z-10 text-center text-white px-4">
+            <h1 className="text-5xl md:text-6xl font-bold mb-6">
+              Smart Receipt Scanning
+            </h1>
+            <p className="text-xl max-w-2xl mb-10">
+              Automatically scan receipts, track UPI payments, and simplify expense management for Indian freelancers during tax filing.
+            </p>
+            
+            {isMounted && (
+              <Link 
+                href={buttonHref}
+                className="bg-purple-600 text-white px-8 py-4 rounded-full text-lg font-semibold hover:bg-purple-700 transition-colors shadow-lg transform hover:scale-105 duration-300"
+              >
+                Try Now
+              </Link>
+            )}
+          </div>
         </section>
 
         {/* Features Section */}

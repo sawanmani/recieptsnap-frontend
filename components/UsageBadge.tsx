@@ -37,31 +37,30 @@ export default function UsageBadge({ refreshKey }: { refreshKey?: number }) {
   }, [refreshKey, session?.accessToken]);
 
   if (loading) {
-    return <div className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium">Loading...</div>;
+    return (
+      <div className="bg-white rounded-lg shadow p-4 min-w-[200px]">
+        <div>Loading...</div>
+      </div>
+    );
   }
 
   if (!usageData) {
-    return <div className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium">Usage: N/A</div>;
+    return (
+      <div className="bg-white rounded-lg shadow p-4 min-w-[200px]">
+        <div>Usage: N/A</div>
+      </div>
+    );
   }
 
   const { freeScansUsed, plan, planExpiresAt } = usageData;
-  const maxFreeScans = 100; // This should match your backend limit
-  const percentage = Math.round((freeScansUsed / maxFreeScans) * 100);
-
-  let bgColor = 'bg-green-100';
-  let textColor = 'text-green-800';
-  if (percentage > 80) {
-    bgColor = 'bg-yellow-100';
-    textColor = 'text-yellow-800';
-  }
-  if (percentage > 95) {
-    bgColor = 'bg-red-100';
-    textColor = 'text-red-800';
-  }
+  const FREE_SCAN_LIMIT = 25; // Correct limit matching backend
+  const remainingScans = Math.max(0, FREE_SCAN_LIMIT - freeScansUsed);
 
   return (
-    <div className={`${bgColor} ${textColor} px-3 py-1 rounded-full text-sm font-medium`}>
-      Scans used: {freeScansUsed}/{maxFreeScans} ({percentage}%)
+    <div className="bg-white rounded-lg shadow p-4 min-w-[200px]">
+      <div className="text-sm text-gray-600">Plan: {plan}</div>
+      <div className="text-sm text-gray-600">Scans used: {freeScansUsed}/{FREE_SCAN_LIMIT}</div>
+      <div className="text-sm text-gray-600">Remaining: {remainingScans} scans</div>
     </div>
   );
 }

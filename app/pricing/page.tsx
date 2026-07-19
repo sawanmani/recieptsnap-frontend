@@ -5,28 +5,31 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { CheckIcon } from '@heroicons/react/24/solid';
 
+
 export default function PricingPage() {
   const router = useRouter();
   const { data: session } = useSession();
-  const [loading, setLoading] = useState(false);
+  const [processingPlan, setProcessingPlan] = useState<'MONTHLY' | 'YEARLY' | null>(null);
   const [error, setError] = useState('');
 
   const handleSubscribe = async (planType: 'MONTHLY' | 'YEARLY') => {
-    if (!session) {
-      router.push('/login');
-      return;
-    }
-
+    setProcessingPlan(planType);
+    
     try {
-      setLoading(true);
-      
+      const accessToken = session?.accessToken;
+      if (!accessToken) {
+        alert('Authentication token not available. Please sign in again.');
+        window.location.href = '/login';
+        return;
+      }
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'}/api/billing/create-subscription`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.accessToken}`,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: JSON.stringify({ planId: planType.toLowerCase() }),
         }
@@ -64,7 +67,7 @@ export default function PricingPage() {
       console.error('Error creating subscription:', error);
       alert(error.message || 'An error occurred while creating subscription');
     } finally {
-      setLoading(false);
+      setProcessingPlan(null);
     }
   };
 
@@ -111,12 +114,12 @@ export default function PricingPage() {
             </ul>
             <button
               onClick={() => handleSubscribe('MONTHLY')}
-              disabled={loading}
+              disabled={processingPlan !== null}
               className={`w-full py-3 px-4 rounded-md text-white font-medium ${
-                loading ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
+                processingPlan === 'MONTHLY' ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
               } transition-colors`}
             >
-              {loading ? 'Processing...' : 'Subscribe'}
+              {processingPlan === 'MONTHLY' ? 'Processing...' : 'Subscribe'}
             </button>
           </div>
 
@@ -148,12 +151,12 @@ export default function PricingPage() {
             </ul>
             <button
               onClick={() => handleSubscribe('YEARLY')}
-              disabled={loading}
+              disabled={processingPlan !== null}
               className={`w-full py-3 px-4 rounded-md text-white font-medium ${
-                loading ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
+                processingPlan === 'YEARLY' ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
               } transition-colors`}
             >
-              {loading ? 'Processing...' : 'Subscribe'}
+              {processingPlan === 'YEARLY' ? 'Processing...' : 'Subscribe'}
             </button>
           </div>
         </div>

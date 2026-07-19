@@ -4,19 +4,23 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { CheckIcon } from '@heroicons/react/24/solid';
-
+import { getAccessToken } from '@/lib/sessionUtils';
 
 export default function PricingPage() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession(); // Adding status to the destructuring
   const [processingPlan, setProcessingPlan] = useState<'MONTHLY' | 'YEARLY' | null>(null);
   const [error, setError] = useState('');
 
   const handleSubscribe = async (planType: 'MONTHLY' | 'YEARLY') => {
+    // Diagnostic logging
+    console.log('DEBUG session object on pricing page:', JSON.stringify(session, null, 2));
+    console.log('DEBUG session status:', status);
+    
     setProcessingPlan(planType);
     
     try {
-      const accessToken = session?.accessToken;
+      const accessToken = getAccessToken(session);
       if (!accessToken) {
         alert('Authentication token not available. Please sign in again.');
         window.location.href = '/login';

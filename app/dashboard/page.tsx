@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, ChangeEvent, useEffect } from 'react';
-import { Camera, Upload, Receipt, PieChart, Settings, X, CheckCircle, LogOut } from 'lucide-react';
+import { Camera, Upload, Receipt, PieChart, Settings, X, CheckCircle, LogOut, Lock } from 'lucide-react';
 import UsageBadge from '@/components/UsageBadge';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -41,7 +41,9 @@ interface ReceiptData {
 
 interface ReceiptSummary {
   totalExpenses: number;
+  totalIncome: number;
   thisMonthExpenses: number;
+  thisMonthIncome: number;
   receiptCount: number;
 }
 
@@ -53,12 +55,14 @@ export default function Dashboard() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedReceipt, setParsedReceipt] = useState<ReceiptItem | null>(null);
+  const [batchScanCount, setBatchScanCount] = useState<number | null>(null); // Track batch scan count
   const [showPaywall, setShowPaywall] = useState(false);
   const [receiptHistory, setReceiptHistory] = useState<ReceiptData[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [summary, setSummary] = useState<ReceiptSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [preferredCurrency, setPreferredCurrency] = useState<string>('INR'); // User's preferred currency
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingReceipt, setEditingReceipt] = useState<ReceiptData | null>(null);
   const [editForm, setEditForm] = useState<Partial<ReceiptData>>({
@@ -139,6 +143,27 @@ export default function Dashboard() {
           setUserPlan(data.plan);
         }
       });
+    }
+  }, [session]);
+
+  // Fetch user's preferred currency
+  useEffect(() => {
+    const fetchUserCurrency = async () => {
+      if (!session?.accessToken) return;
+      
+      try {
+        const response = await api.get('/api/users/', session.accessToken);
+        if (response.ok) {
+          const userData = await response.json();
+          setPreferredCurrency(userData.preferredCurrency || 'INR');
+        }
+      } catch (error) {
+        console.error('Error fetching user currency:', error);
+      }
+    };
+
+    if (session) {
+      fetchUserCurrency();
     }
   }, [session]);
 
@@ -241,6 +266,20 @@ export default function Dashboard() {
       const data = await res.json();
       const successfulReceipts = data.results.filter((r: any) => r.success).map((r: any) => r.receipt);
       const failedFiles = data.results.filter((r: any) => !r.success);
+
+      if (successfulReceipts.length > 0) {
+        if (successfulReceipts.length > 1) {
+          // Batch scan: show first receipt and summary
+          setParsedReceipt(successfulReceipts[0]);
+          setBatchScanCount(successfulReceipts.length); // Set batch count for display
+        } else {
+          // Single receipt: show the receipt
+          setParsedReceipt(successfulReceipts[0]);
+          setBatchScanCount(null); // Reset batch count
+        }
+      } else {
+        setBatchScanCount(null); // Reset batch count if no successful scans
+      }
 
       if (failedFiles.length > 0) {
         alert(
@@ -368,12 +407,23 @@ export default function Dashboard() {
     });
   };
 
-  // Format currency in INR
-  const formatCurrency = (amount: number | null) => {
+  // Format currency based on user's preferred currency
+  const formatCurrency = (amount: number | null, currencyCode: string = preferredCurrency) => {
     if (amount === null) return 'N/A';
-    return new Intl.NumberFormat('en-IN', { 
+    
+    // Map currency codes to appropriate locales
+    const currencyMap: Record<string, { locale: string; currency: string }> = {
+      'INR': { locale: 'en-IN', currency: 'INR' },
+      'USD': { locale: 'en-US', currency: 'USD' },
+      'EUR': { locale: 'de-DE', currency: 'EUR' },
+      'GBP': { locale: 'en-GB', currency: 'GBP' }
+    };
+    
+    const { locale, currency } = currencyMap[currencyCode] || currencyMap['INR'];
+    
+    return new Intl.NumberFormat(locale, { 
       style: 'currency', 
-      currency: 'INR' 
+      currency: currency
     }).format(amount);
   };
 
@@ -467,11 +517,26 @@ export default function Dashboard() {
               ) : (
                 <div className="bg-white rounded-lg p-6 shadow-md">
                   <h2 className="text-xl font-semibold mb-4 text-purple-800">Total Expenses</h2>
-                  <p className="text-3xl font-bold text-gray-800">{formatCurrency(summary?.totalExpenses || 0)}</p>
+                  <p className="text-3xl font-bold text-red-600">{formatCurrency(summary?.totalExpenses || 0)}</p>
                 </div>
               )}
-              
-              {/* This Month Expenses Card */}
+
+              {/* Total Income Card */}
+              {summaryLoading ? (
+                <div className="bg-white rounded-lg p-6 shadow-md">
+                  <h2 className="text-xl font-semibold mb-4 text-purple-800">Total Income</h2>
+                  <div className="animate-pulse">
+                    <div className="h-8 bg-gray-200 rounded w-3/4"></div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg p-6 shadow-md">
+                  <h2 className="text-xl font-semibold mb-4 text-purple-800">Total Income</h2>
+                  <p className="text-3xl font-bold text-green-600">{formatCurrency(summary?.totalIncome || 0)}</p>
+                </div>
+              )}
+
+              {/* Combined Card for This Month Expenses and Income */}
               {summaryLoading ? (
                 <div className="bg-white rounded-lg p-6 shadow-md">
                   <h2 className="text-xl font-semibold mb-4 text-purple-800">This Month</h2>
@@ -482,22 +547,8 @@ export default function Dashboard() {
               ) : (
                 <div className="bg-white rounded-lg p-6 shadow-md">
                   <h2 className="text-xl font-semibold mb-4 text-purple-800">This Month</h2>
-                  <p className="text-3xl font-bold text-gray-800">{formatCurrency(summary?.thisMonthExpenses || 0)}</p>
-                </div>
-              )}
-              
-              {/* Receipts Scanned Card */}
-              {summaryLoading ? (
-                <div className="bg-white rounded-lg p-6 shadow-md">
-                  <h2 className="text-xl font-semibold mb-4 text-purple-800">Receipts Scanned</h2>
-                  <div className="animate-pulse">
-                    <div className="h-8 bg-gray-200 rounded w-3/4"></div>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-white rounded-lg p-6 shadow-md">
-                  <h2 className="text-xl font-semibold mb-4 text-purple-800">Receipts Scanned</h2>
-                  <p className="text-3xl font-bold text-gray-800">{summary?.receiptCount || 0}</p>
+                  <p className="text-lg text-red-600">Expenses: {formatCurrency(summary?.thisMonthExpenses || 0)}</p>
+                  <p className="text-lg text-green-600">Income: {formatCurrency(summary?.thisMonthIncome || 0)}</p>
                 </div>
               )}
             </div>
@@ -505,6 +556,14 @@ export default function Dashboard() {
             {/* Usage Badge Column */}
             <div>
               <UsageBadge refreshKey={usageRefreshKey} />
+              {userPlan === 'FREE' && (
+                <button
+                  onClick={() => router.push('/pricing')}
+                  className="mt-4 w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-2 rounded-lg hover:opacity-90 transition-opacity"
+                >
+                  Go Premium
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -590,6 +649,12 @@ export default function Dashboard() {
                         <CheckCircle className="text-green-500" size={24} />
                       </div>
                       
+                      {batchScanCount && batchScanCount > 1 && (
+                        <div className="mt-2 text-lg text-blue-600 font-medium">
+                          {batchScanCount} receipts scanned successfully
+                        </div>
+                      )}
+                      
                       <div className="mt-4 space-y-3">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Merchant:</span>
@@ -629,6 +694,7 @@ export default function Dashboard() {
                           onClick={() => {
                             setSelectedFiles([]);
                             setParsedReceipt(null);
+                            setBatchScanCount(null); // Reset batch count
                             setSmsText('');
                           }}
                         >
@@ -666,14 +732,19 @@ export default function Dashboard() {
           <div className="bg-white rounded-2xl p-6 shadow-md">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-semibold text-purple-800">Receipt History</h2>
-              {userPlan && userPlan !== 'FREE' && (
-                <button
-                  onClick={handleExportCsv}
-                  className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm hover:bg-purple-200"
-                >
-                  Export CSV
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (userPlan === 'FREE') {
+                    setShowPaywall(true);
+                  } else {
+                    handleExportCsv();
+                  }
+                }}
+                className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm hover:bg-purple-200 flex items-center"
+              >
+                {userPlan === 'FREE' && <Lock size={16} className="mr-1" />}
+                Export CSV
+              </button>
             </div>
             
             <div className="overflow-x-auto">
@@ -777,12 +848,19 @@ export default function Dashboard() {
               
               <div>
                 <label className="block text-gray-700 mb-2">Currency</label>
-                <select className="w-full p-3 border border-gray-300 rounded-lg">
-                  <option>USD ($)</option>
-                  <option>EUR (€)</option>
-                  <option>GBP (£)</option>
-                  <option>INR (₹)</option>
+                <select 
+                  value={preferredCurrency} 
+                  onChange={(e) => setPreferredCurrency(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg"
+                >
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                  <option value="INR">INR (₹)</option>
                 </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Receipts are stored in their original currency; this only changes how totals are displayed
+                </p>
               </div>
               
               <div>
@@ -794,7 +872,35 @@ export default function Dashboard() {
                 </select>
               </div>
               
-              <button className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors">
+              <button 
+                onClick={async () => {
+                  if (!session?.accessToken) return;
+                  
+                  try {
+                    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'}/api/users/`, {
+                      method: 'PUT',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session.accessToken}`
+                      },
+                      body: JSON.stringify({
+                        preferredCurrency: preferredCurrency
+                      })
+                    });
+                    
+                    if (response.ok) {
+                      alert('Settings saved successfully!');
+                    } else {
+                      const errorData = await response.json();
+                      alert(`Error: ${errorData.error || 'Failed to save settings'}`);
+                    }
+                  } catch (error) {
+                    console.error('Error saving settings:', error);
+                    alert('An error occurred while saving settings');
+                  }
+                }}
+                className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors"
+              >
                 Save Changes
               </button>
             </div>
